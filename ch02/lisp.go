@@ -31,7 +31,7 @@ import (
 )
 
 func Version() string {
-	return "chapter-01"
+	return "chapter-02"
 }
 
 // AtomKind is an enum for the type of data stored in an Atom.
