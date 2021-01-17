@@ -1,0 +1,379 @@
+= Building LISP
+Leo Howel <leo@lwh.jp>
+v1.0, 2021-01-16
+:doctype: book
+:sectnums:
+:sectnumlevels: 5
+:partnums:
+:toc: right
+
+:sectnums!:
+== Contents
+<<Introduction,Chapter 1: Introduction>>
+
+<<Data,Chapter 2: Data>>
+
+<<Parser,Chapter 3: Parser>>
+
+<<Expressions,Chapter 4: Expressions>>
+
+<<Built-in functions,Chapter 5: Built-in functions>>
+
+<<Arithmetic,Chapter 6: Arithmetic>>
+
+<<Lambda expressions and closures,Chapter 7: Lambda expressions and closures>>
+
+<<Booleans and short-circuit evaluation,Chapter 8: Booleans and short-circuit evaluation>>
+
+<<Syntactic sugar,Chapter 9: Syntactic sugar>>
+
+<<Variadic functions,Chapter 10: Variadic functions>>
+
+<<Macros,Chapter 11: Macros>>
+
+<<Library,Chapter 12: Library>>
+
+<<Quasiquotation,Chapter 13: Quasiquotation>>
+
+<<Continuations and tail recursion,Chapter 14: Continuations and tail recursion>>
+
+<<Garbage collection,Chapter 15: Garbage collection>>
+
+<<Where do we go from here?,Chapter 16: Where do we go from here?>>
+
+Questions? Comments? Email leo@lwh.jp.
+
+== Copyright
+This document is Copyright (c) by Leo W. Howell.
+All rights reserved.
+
+The code is Copyright (c) 2021 by Leo W. Howell and Michael D. Henderson.
+The code is released under the MIT License.
+
+This document was copied from the https://www.lwh.jp/lisp/index.html[original] and converted to AsciiDoc on 2021-01-16.
+
+I converted the C code to Go and created directories and packages to match the chapter-by-chapter progress of the code.
+
+Please file an issue with the https://github.com/mdhender/lisp[GitHub repository] if you find any errors with my transcription.
+
+== Introduction
+The best way to understand how something works is to try to build it for yourself. Reading somebody else's explanation might satisfy your curiosity, but without the experience of falling into all the little traps it is difficult to get a feel for why something is designed a certain way.
+
+It's been said that every would-be programmer should write a compiler. While I think this is good advice (although I haven't followed it myself), there is so much effort involved just in parsing a language such as C that any potential insights risk getting lost in a mire of details. Perhaps creating an interpreter for some simple language would be a good first step.
+
+I first started playing around with LISP a good few years ago, yet much later than I should have. This led me to the classic lecture series http://groups.csail.mit.edu/mac/classes/6.001/abelson-sussman-lectures/[Structure and Interpretation of Computer Programs]. If you have the next 24 hours free and haven't seen the videos already, go watch them now.
+
+The course covers many topics, but the second half shows in detail how to evaluate LISP, first by implementing a simple version of eval in LISP itself. I figured that this would translate well into C, and so decided to try creating my own implementation of LISP.
+
+It was really easy.
+
+This article is an attempt to share the process by which I built my implementation, and the chapters occur roughly in the order in which I did things. Why not follow along and create your own version in your language of choice?
+footnote:[If you are using a fancy language which supports something like eval, it would be cool to expose the native datatypes to the LISP environment.]
+
+As a professional programmer (ha, ha), I spend the majority of my time writing C and C++. Most of the rest is Java. There are many languages out there, each with their own debatable merits, but I'd like to demonstrate just how simple a LISP machine can be — even built in as low-level a language as C. See John McCarthy's http://www-formal.stanford.edu/jmc/history/lisp/lisp.html[History of LISP] for the story of the pioneers.
+
+So here is my toy implementation of LISP. I've borrowed features from various dialects, but it's closer to Scheme than Common LISP. The differences are trivial enough that changing over would not require substantial changes to the interpreter. Don't worry if you're not familiar with LISP; I will define everything as I go along.
+
+It is not meant to be the smallest possible implementation, nor the most efficient, nor the most complete; it could however be described as lazy. My goal was to write robust, easy-to-read code that does exactly what it needs to, and no more, and I hope that it conveys how little effort is required to construct an incredibly powerful environment like LISP.
+
+== Data
+We will define four kinds of object to begin with:
+
+Integer::
+A number. For example: 3, -9, 0.
+Symbol::
+A name consisting of a string of characters. For example: `FOO`, `BAR`, `ADD-TWO`. The names are case-sensitive, so `foo`, `Foo`, and `FOO` are three distinct symbols.
+NIL::
+Represents "nothing". A bit like `nil` in Go and other languages.
+Pair::
+A pair consists of two elements, which for historical reasons are called *car* and *cdr*. Both can hold either an integer, a symbol, `NIL`, or a reference to another pair. The types of each element may be different.
+
+Integers, symbols and NIL are called simple data. The term *atom* can refer to either a simple datum or a pair (purists may disagree on this point).
+
+Note that integers and symbols are immutable, so we can think of two integers with the same value as being the same object. This is particularly useful for symbols, because it allows us to test for equality by comparing pointers.
+
+=== Implementation
+Let's declare some types to hold our data. There are many clever ways to store LISP objects efficiently, but for this implementation we will stick to a very simple scheme [please excuse the pun].
+
+[source,go]
+----
+type AtomKind int
+const ( // enums for AtomKind
+	AtomKind_NIL AtomKind = iota
+	AtomKind_Pair
+	AtomKind_Symbol
+	AtomKind_Integer
+)
+
+type Atom struct {
+	kind    AtomKind
+    integer int64
+    pair    *Pair
+    symbol  []byte
+}
+
+type Pair struct {
+	atom [2]Atom
+}
+----
+
+A few helper functions will be handy.
+
+[source,go]
+----
+// nilp is a predicate that returns true if the argument is NIL.
+func nilp(a Atom) bool { return a.kind == AtomKind_NIL }
+----
+
+The "p" in `nilp` stands for "predicate". Identifiers in Go may not contain question marks. There is no need to restrict our LISP implementation in that way, of course.
+
+[source,go]
+----
+// car returns the car of a pair. panics if p is not a pair.
+func car(p Atom) Atom { return p.pair.atom[0] }
+
+// cdr returns the cdr of a pair. panics if p is not a pair.
+func cdr(p Atom) Atom { return p.pair.atom[1] }
+----
+
+Integers and (pointers to) strings can be copied around, but we need to allocate pairs on the heap.
+
+[source,go]
+----
+func cons(car, cdr Atom) Atom {
+	return Atom{kind: AtomKind_Pair, pair: &Pair{atom: [2]Atom{car, cdr}}}
+}
+----
+
+`cons` is a function to allocate a pair on the heap and assign its two elements.
+
+At this point you will have noticed that using `cons` will leak memory the moment its return value is discarded. Go is a garbage-collected language, so this is not a problem for our implementation. (Note that a faster/smarter/different implementation would want to avoid allocating and collecting atoms, so it might implement a memory pool for atoms.)
+
+Now we can start creating LISP objects. An integer:
+
+[source,go]
+----
+func make_int(x int64) Atom {
+	return Atom{kind: AtomKind_Integer, integer: x}
+}
+----
+
+And a symbol:
+
+[source,go]
+----
+func make_sym(s []byte) Atom {
+	a := Atom{kind: AtomKind_Symbol, symbol: make([]byte, len(s), len(s))}
+	copy(a.symbol, s)
+	return a
+}
+----
+
+We create a duplicate of the symbol value here so that the caller doesn't have to worry about managing buffers.
+
+=== Testing
+
+[source,go]
+----
+func TestMakeInt(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		integer int64
+	}{
+		{"a", 42},
+	} {
+		a := make_int(tt.integer)
+		if !(a.kind == AtomKind_Integer) {
+			t.Errorf("%s: expected AtomKind_Integer: got %d\n", tt.name, a.kind)
+		}
+		if !(tt.integer == a.integer) {
+			t.Errorf("%s: expected %d: got %d\n", tt.name, tt.integer, a.integer)
+		}
+	}
+}
+
+func TestMakeSym(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		symbol string
+	}{
+		{"snake", "snake"},
+	} {
+		s := []byte(tt.symbol)
+		a := make_sym(s)
+		if !(a.kind == AtomKind_Symbol) {
+			t.Errorf("%s: expected AtomKind_Symbol: got %d\n", tt.name, a.kind)
+		}
+		if !bytes.Equal(s, a.symbol) {
+			t.Errorf("%s: expected %q: got %q\n", tt.name, tt.symbol, string(a.symbol))
+		}
+	}
+}
+----
+
+=== Textual representation
+We will write a pair like this:
+
+[source,lisp]
+----
+(a . b)
+----
+
+where `a` is the car and `b` is the cdr.
+
+By using the `cdr` of a pair to reference another pair, we can create a chain:
+
+[source,lisp]
+----
+(a . (b . (c . (d . NIL))))
+----
+
+Notice that the `cdr` of the last pair is `NIL`. This signifies the end of the chain, and we call this structure a *list*. To avoid having to write a large number of brackets, we will write the previous list like this:
+
+[source,lisp]
+----
+(a b c d)
+----
+
+Finally, if the `cdr` of the last pair in a list is not NIL, we will write this:
+[source,lisp]
+----
+(p q . r)
+----
+which is equivalent to
+[source,lisp]
+----
+(p . (q . r))
+----
+This is called an improper list.
+
+=== Implementation
+Printing an atom or list is simple.
+
+[source,go]
+----
+func print_expr(a Atom) {
+	fmt.Printf("%s", a.String())
+}
+----
+
+By using recursion we can print arbitrarily complex data structures. (Actually that's not true: for a very deeply nested structure we will run out of stack space, and a self-referencing tree will never finish printing).
+
+[source,go]
+----
+func (a Atom) String() string {
+	switch a.kind {
+	case AtomKind_NIL:
+		return "NIL"
+	case AtomKind_Integer:
+		return fmt.Sprintf("%d", a.integer)
+	case AtomKind_Symbol:
+		return string(a.symbol)
+	case AtomKind_Pair:
+		sb := strings.Builder{}
+		sb.WriteString("(")
+		sb.WriteString(car(a).String())
+		a = gcdr(a)
+		for !nilp(a) {
+			if a.kind != AtomKind_Pair {
+				sb.WriteString(" . ")
+				sb.WriteString(a.String())
+				break
+			}
+			sb.WriteString(" ")
+			sb.WriteString(car(a).String())
+			a = gcdr(a)
+		}
+		sb.WriteString(")")
+		return sb.String()
+	}
+	panic(fmt.Sprintf("assert(atom.kind %= %d)", a.kind))
+}
+----
+
+=== Testing
+See what print_expr does with various atoms:
+
+|===
+|Case|Atom|Output
+
+|a|make_int(42)|42
+|b|make_sym("FOO")|FOO
+|c|cons(make_sym("X"), make_sym("Y"))|(X . Y)
+|d|cons(make_int(1),cons(make_int(2),cons(make_int(3),nil)))|(1 2 3)
+|===
+
+[source,go]
+----
+func TestStringer(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		atom   Atom
+		expect string
+	}{
+		{"a", make_int(42), "42"},
+		{"b", make_sym([]byte("FOO")), "FOO"},
+		{"c", cons(make_sym([]byte("X")), make_sym([]byte("Y"))), "(X . Y)"},
+		{"d", cons(make_int(1), cons(make_int(2), cons(make_int(3), Atom{}))), "(1 2 3)"},
+	} {
+		a := tt.atom.String()
+		if tt.expect != a {
+			t.Errorf("%s: expected %q: got %q\n", tt.name, tt.expect, a)
+		}
+	}
+}
+----
+
+All this is pretty trivial. We'll get on to some more interesting stuff in the next chapter.
+
+=== One last thing
+Remember we said that we would treat identical symbols as being the same object? We can enforce that by keeping track of all the symbols created, and returning the same atom if the same sequence of characters is requested subsequently.
+
+Languages with a set or hashtable container make this easy, but we can use the LISP data structures already implemented to store the symbols in a list:
+
+[source,go]
+----
+var sym_table Atom
+
+func make_sym(s []byte) Atom {
+	for p := sym_table; !nilp(p); p = cdr(p) {
+		if bytes.Equal(car(p).symbol, s) {
+			return car(p)
+		}
+	}
+	a := Atom{kind: AtomKind_Symbol, symbol: make([]byte, len(s), len(s))}
+	copy(a.symbol, s)
+	sym_table = cons(a, sym_table)
+	return a
+}
+----
+
+Neat, huh? It's not particularly efficient, but it will do fine for now.
+
+== Parser
+
+== Expressions
+
+== Built-in functions
+
+== Arithmetic
+
+== Lambda expressions and closures
+
+== Booleans and short-circuit evaluation
+
+== Syntactic sugar
+
+== Variadic functions
+
+== Macros
+
+== Library
+
+== Quasiquotation
+
+== Continuations and tail recursion
+
+== Garbage collection
+
+== Where do we go from here?
