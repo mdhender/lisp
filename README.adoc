@@ -351,6 +351,381 @@ func make_sym(s []byte) Atom {
 Neat, huh? It's not particularly efficient, but it will do fine for now.
 
 == Parser
+The next stage in our project is parsing: taking a line of text from the user (or elsewhere), and creating the data objects it represents. Naturally the user might type something which does not represent an object according to our definitions, in which case we must have some way to signal an error.
+
+=== Errors
+Here is a definition of an Error type:
+
+[source,go]
+----
+var ErrorEOF = errors.New("end-of-input")
+var ErrorSyntax = errors.New("syntax error")
+----
+
+If, like me, you learned to program in BASIC on microcomputers, you will be familiar with the dreaded SYNTAX ERROR. Now is our chance to see things from the other side of the fence. Most of our functions from now on will return an Error to indicate whether and how something went wrong.
+
+=== Lexer
+I have no formal training in CS, but as far as I understand it the idea is to split a string up into tokens, which are both "words" and "punctuation", and discard any insignificant white space. So if the input is:
+
+[source,lisp]
+----
+(foo bar)
+----
+
+Then the four tokens are `(`, `foo`, `bar`, and `)`.
+
+So let's start by creating a lexer, which will return a slice containing the next token in a buffer.
+
+[source,go]
+----
+// lex returns the next token along with the remaining input.
+// it returns end-of-input if there is no input left to read.
+func lex(input []byte) (token []byte, rest []byte, err error) {
+	// skip leading whitespace
+	input = bytes.TrimLeft(input, " \t\n")
+	// return an error if no more input is left
+	if len(input) == 0 {
+		return nil, nil, ErrorEOF
+	}
+	// accept an open or close paren
+	if input[0] == '(' || input[0] == ')' {
+		return input[:1], input[1:], nil
+	}
+	// otherwise return all characters up to the first delimiter
+	offset := bytes.IndexAny(input, "() \t\n")
+	return input[:offset], input[offset:], nil
+}
+----
+If our lexer hits the end of the string without finding a token (ie, the remainder of the string is entirely white space), it will return nil values for the token and remaining input. It will also return an error indicating end of input.
+
+=== Parser
+Now we can think about the parser itself. The entry point is read_expr, which will read a single (possibly complex) object and return the error status and a pointer to the remainder of the input.
+
+[source,go]
+----
+func read_expr(input []byte) (a Atom, rest []byte, err error) {}
+----
+
+We know that expressions will be treated as lists, so we need another helper function to set the `cdr` on a pair. We'll call it `scdr`, for "set cdr." (Later we'll introduce a similar function for the `car`.)
+
+[source,go]
+----
+// scdr set the cdr of a pair. panics if p is not a pair.
+func scdr(p, a Atom) { p.pair.atom[1] = a }
+----
+
+We will first deal with the simple data: integers, symbols and `NIL`. If you have a regex library available then this is easy, but it's not too bad in plain Go either.
+
+[source,go]
+----
+func parse_simple(input []byte) (a Atom, rest []byte, err error) {
+	if token, rest := parse_integer(input); token != nil {
+		i, err := strconv.ParseInt(string(token), 10, 0)
+		return make_int(i), rest, err
+	}
+	if token, rest := parse_symbol(input); token != nil {
+		if bytes.Equal(token, []byte("NIL")) {
+			return Atom{}, rest, nil
+		}
+		return make_sym(token), rest, nil
+	}
+	panic("!")
+}
+
+func parse_integer(input []byte) (token, rest []byte) {
+	lenToken := 0
+	for lenToken < len(input) {
+		r, w := utf8.DecodeRune(input[lenToken:])
+		if unicode.IsDigit(r) {
+			lenToken += w
+		} else if lenToken == 0 && r == '+' {
+			lenToken += w
+		} else if lenToken == 0 && r == '-' {
+			lenToken += w
+		} else {
+			break
+		}
+	}
+	if lenToken == 0 || (lenToken == 1 && (input[0] == '+' || input[0] == '-')) {
+		return nil, input
+	}
+	return input[:lenToken], input[lenToken:]
+}
+
+func parse_symbol(input []byte) (token, rest []byte) {
+	lenToken := 0
+	for lenToken < len(input) {
+		r, w := utf8.DecodeRune(input[lenToken:])
+		if unicode.IsLetter(r) {
+			lenToken += w
+		} else if unicode.IsSpace(r) {
+			break
+		} else if r == '+' || r == '-' || r == '_' {
+			lenToken += w
+		} else {
+			break
+		}
+	}
+	if lenToken == 0 || (lenToken == 1 && (input[0] == '+' || input[0] == '-')) {
+		return nil, input
+	}
+	return input[:lenToken], input[lenToken:]
+}
+----
+
+Notice two things: first, we are implementing a case-sensitive LISP, which is not the traditional behaviour. Secondly, `NIL` is a special case: it's parsed directly as AtomType_Nil, rather than leaving it as a symbol.
+
+If you're familiar with the various dialects of LISP then you will know that `NIL` is not necessarily the same as `()`, the empty list. We could choose to treat `NIL` as a symbol which evaluates to itself, but for this project we will consider both representations to be exactly the same.
+
+Next up are lists (including improper lists and pairs). The simplified list syntax makes this a little complicated, so we'll stick it all in a helper function. Once again recursion allows us to deal with nested lists.
+
+[source,go]
+----
+// read_list returns a list. it assumes that it is called
+// immediately after an opening paren is read in.
+// it will read both proper and improper lists.
+func read_list(input []byte) (a Atom, rest []byte, err error) {
+	var result, tail, item Atom
+	for {
+		// read a token from the input in the hope that it will
+		// be ')' or '.', which we can immediately handle.
+		if token, rest, err := lex(input); err != nil {
+			return Atom{}, rest, err
+		} else if token[0] == ')' {
+			// found the end of the list
+			return result, rest, nil
+		} else if token[0] == '.' && len(token) == 1 {
+			// a single dot signals an improper (a/k/a dotted) list,
+			// but it must not be the first thing in the list!
+			if nilp(tail) {
+				return Atom{}, token, ErrorSyntax
+			}
+			if item, rest, err = read_expr(rest); err != nil {
+				return Atom{}, rest, err
+			}
+			// append to the result
+			scdr(tail, item)
+			// expect a closing paren
+			token, rest, err = lex(rest)
+			if err != nil || len(token) == 0 || token[0] != ')' {
+				return Atom{}, rest, ErrorSyntax
+			}
+			return result, rest, nil
+		}
+
+		// ignore the token we just lexed and pass the entire input
+		// buffer in to read the next expression. we have to because
+		// that token could have started a list.
+		item, rest, err = read_expr(input)
+		if err != nil {
+			return Atom{}, rest, err
+		} else if nilp(tail) {
+			// first item
+			result = cons(item, Atom{})
+			tail = result
+		} else {
+			scdr(tail, cons(item, Atom{}))
+			tail = cdr(tail)
+		}
+
+		// make the rest of the input available for the next loop
+		input = rest
+	}
+}
+----
+
+I dislike writing infinite loops, but this is the clearest layout I have come up with so far. Let me know if you can write a better one!
+
+Finally we have `read_expr` itself, which is very simple now that we have done all of the hard work:
+
+[source,go]
+----
+// read_expr reads the next expression from the input.
+// that can be an atom, list, or NIL.
+func read_expr(input []byte) (a Atom, rest []byte, err error) {
+	token, rest, err := lex(input)
+	if err != nil {
+		return Atom{}, rest, err
+	} else if token[0] == '(' {
+		return read_list(rest)
+	} else if token[0] == ')' {
+		return Atom{}, rest, ErrorSyntax
+	}
+	// the parser wants to see only the current token and we
+	// want to ensure that it parsed the entire token.
+	a, excess, err := parse_simple(token)
+	if len(excess) != 0 {
+		// if we get here, there's a problem with the lex function.
+		panic("assert(parse(token) should consume entire token)")
+	}
+	return a, rest, err
+}
+----
+The check for a closing bracket will catch invalid forms such as `)` and `(X .)`.
+
+There is some weirdness with the check for `excess` at the end. The `lex` function should return a single token; if the parse doesn't consume all of that token, then our lexer is broken. It shouldn't return that excess.
+
+=== Testing
+Go has a built-in test package, which we use to check that input is parsed correctly.
+
+==== Lexer
+[source,go]
+----
+func TestLex(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		input  string
+		expect []string
+		err    error
+	}{
+		{"a", "(foo bar)", []string{"(", "foo", "bar", ")"}, ErrorEOF},
+		{"b", " ( ) ", []string{"(", ")"}, ErrorEOF},
+		{"c", " ", []string{}, ErrorEOF},
+	} {
+		input := []byte(tt.input)
+		var tokens [][]byte
+		for len(input) != 0 {
+			token, rest, err := lex(input)
+			if err != nil {
+				if tt.err == nil {
+					t.Errorf("%s: unexpected error: %+v\n", tt.name, err)
+				} else if !errors.Is(err, tt.err) {
+					t.Errorf("%s: expected %+v: got %+v\n", tt.name, tt.err, err)
+				}
+				break
+			}
+			tokens = append(tokens, token)
+			input = rest
+		}
+		if len(tt.expect) != len(tokens) {
+			t.Errorf("%s: expected %d tokens: got %d\n", tt.name, len(tt.expect), len(tokens))
+		}
+		var got, expect [][]byte
+		if len(tokens) < len(tt.expect) {
+			got = make([][]byte, len(tt.expect), len(tt.expect))
+			expect = make([][]byte, len(tt.expect), len(tt.expect))
+		} else {
+			got = make([][]byte, len(tokens), len(tokens))
+			expect = make([][]byte, len(tokens), len(tokens))
+		}
+		for i, tok := range tt.expect {
+			expect[i] = []byte(tok)
+		}
+		for i, tok := range tokens {
+			got[i] = tok
+		}
+		for i := range expect {
+			if expect[i] == nil {
+				t.Errorf("%s: token %d: expected nil: got %q\n", tt.name, i, string(got[i]))
+			} else if got[i] == nil {
+				t.Errorf("%s: token %d: expected %q: got nil\n", tt.name, i, string(expect[i]))
+			} else if !bytes.Equal(expect[i], got[i]) {
+				t.Errorf("%s: token %d: expected %q: got %q\n", tt.name, i, string(expect[i]), string(got[i]))
+			}
+		}
+	}
+}
+----
+
+==== Parser
+[source,go]
+----
+func TestParseInteger(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		input string
+		token string
+		rest  string
+	}{
+		{"a", "(foobar)", "", "(foobar)"},
+		{"b", "42)", "42", ")"},
+		{"c", "-42)", "-42", ")"},
+		{"d", "+42)", "+42", ")"},
+		{"e", "+foobar", "", "+foobar"},
+	} {
+		token, rest := parse_integer([]byte(tt.input))
+		if tt.token != string(token) {
+			t.Errorf("%s: expected token %q: got %q\n", tt.name, tt.token, string(token))
+		}
+		if tt.rest != string(rest) {
+			t.Errorf("%s: expected rest %q: got %q\n", tt.name, tt.rest, string(rest))
+		}
+	}
+}
+
+func TestParseSymbol(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		input string
+		token string
+		rest  string
+	}{
+		{"a", "(foo bar)", "", "(foo bar)"},
+		{"b", "foo bar)", "foo", " bar)"},
+		{"c", " bar)", "", " bar)"},
+		{"d", "bar)", "bar", ")"},
+		{"e", ")", "", ")"},
+	} {
+		token, rest := parse_symbol([]byte(tt.input))
+		if tt.token != string(token) {
+			t.Errorf("%s: expected token %q: got %q\n", tt.name, tt.token, string(token))
+		}
+		if tt.rest != string(rest) {
+			t.Errorf("%s: expected rest %q: got %q\n", tt.name, tt.rest, string(rest))
+		}
+	}
+}
+----
+
+==== Read
+For the reader, here's what our sample input looks like:
+|===
+|Case|Input|Output
+
+|a|42|42
+|b|(foo bar)|(FOO BAR)
+|c|(s (t . u) v . (w . NIL))|(S (T . U) V W)
+|d|()|NIL
+|===
+
+The table in our test function has some additional data (`rest` and `err`) so that we can add tests to catch syntax errors in the future. I actually used those when I was debugging the parser.
+
+[source,go]
+----
+func TestRead(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		input  string
+		expect string
+		rest   string
+		err    error
+	}{
+		{"a", "42", "42", "", nil},
+		{"b", "(foo bar)", "(foo bar)", "", nil},
+		{"c", " ( foo  bar ) ", "(foo bar)", " ", nil},
+		{"d", "( s (t . u) v . (w . NIL))(foo)", "(s (t . u) v w)", "(foo)", nil},
+		{"e", "()", "NIL", "", nil},
+	} {
+		a, rest, err := read_expr([]byte(tt.input))
+		if err != nil {
+			if tt.err == nil {
+				t.Errorf("%s: unexpected error: %+v\n", tt.name, err)
+			} else if !errors.Is(err, tt.err) {
+				t.Errorf("%s: expected %+v: got %+v\n", tt.name, tt.err, err)
+			}
+			continue
+		}
+		if got := a.String(); tt.expect != got {
+			t.Errorf("%s: expected %q: got %q\n", tt.name, tt.expect, got)
+		}
+		if tt.rest != string(rest) {
+			t.Errorf("%s: expected rest %q: got %q\n", tt.name, tt.rest, string(rest))
+		}
+	}
+}
+----
+
+Looks good! Remember that `()` is exactly the same as `NIL`, and that `(X Y)` is just another way of writing `(X . (Y . NIL))`.
 
 == Expressions
 
