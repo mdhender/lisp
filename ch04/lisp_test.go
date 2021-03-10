@@ -30,184 +30,16 @@ import (
 	"testing"
 )
 
-func TestLex(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		input  string
-		expect []string
-		err    error
-	}{
-		{"a", "(foo bar)", []string{"(", "foo", "bar", ")"}, Error_EOF},
-		{"b", " ( ) ", []string{"(", ")"}, Error_EOF},
-		{"c", " ", []string{}, Error_EOF},
-	} {
-		input := []byte(tc.input)
-		var tokens [][]byte
-		for len(input) != 0 {
-			token, rest, err := lex(input)
-			if err != nil {
-				if tc.err == nil {
-					t.Errorf("%s: unexpected error: %+v\n", tc.name, err)
-				} else if !errors.Is(err, tc.err) {
-					t.Errorf("%s: expected %+v: got %+v\n", tc.name, tc.err, err)
-				}
-				break
-			}
-			tokens = append(tokens, token)
-			input = rest
-		}
-		if len(tc.expect) != len(tokens) {
-			t.Errorf("%s: expected %d tokens: got %d\n", tc.name, len(tc.expect), len(tokens))
-		}
-		var got, expect [][]byte
-		if len(tokens) < len(tc.expect) {
-			got = make([][]byte, len(tc.expect), len(tc.expect))
-			expect = make([][]byte, len(tc.expect), len(tc.expect))
-		} else {
-			got = make([][]byte, len(tokens), len(tokens))
-			expect = make([][]byte, len(tokens), len(tokens))
-		}
-		for i, tok := range tc.expect {
-			expect[i] = []byte(tok)
-		}
-		for i, tok := range tokens {
-			got[i] = tok
-		}
-		for i := range expect {
-			if expect[i] == nil {
-				t.Errorf("%s: token %d: expected nil: got %q\n", tc.name, i, string(got[i]))
-			} else if got[i] == nil {
-				t.Errorf("%s: token %d: expected %q: got nil\n", tc.name, i, string(expect[i]))
-			} else if !bytes.Equal(expect[i], got[i]) {
-				t.Errorf("%s: token %d: expected %q: got %q\n", tc.name, i, string(expect[i]), string(got[i]))
-			}
-		}
-	}
-}
-
-func TestMakeInt(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		integer int64
-	}{
-		{"a", 42},
-	} {
-		a := make_int(tc.integer)
-		if !(a.kind == AtomKind_Integer) {
-			t.Errorf("%s: expected AtomKind_Integer: got %d\n", tc.name, a.kind)
-		}
-		if !(tc.integer == a.integer) {
-			t.Errorf("%s: expected %d: got %d\n", tc.name, tc.integer, a.integer)
-		}
-	}
-}
-
-func TestMakeSym(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		symbol string
-	}{
-		{"snake", "snake"},
-	} {
-		s := []byte(tc.symbol)
-		a := make_sym(s)
-		if !(a.kind == AtomKind_Symbol) {
-			t.Errorf("%s: expected AtomKind_Symbol: got %d\n", tc.name, a.kind)
-		}
-		if !bytes.Equal(s, a.symbol) {
-			t.Errorf("%s: expected %q: got %q\n", tc.name, tc.symbol, string(a.symbol))
-		}
-	}
-}
-
-func TestParseInteger(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		input string
-		token string
-		rest  string
-	}{
-		{"a", "(foobar)", "", "(foobar)"},
-		{"b", "42)", "42", ")"},
-		{"c", "-42)", "-42", ")"},
-		{"d", "+42)", "+42", ")"},
-		{"e", "+foobar", "", "+foobar"},
-	} {
-		token, rest := parse_integer([]byte(tc.input))
-		if tc.token != string(token) {
-			t.Errorf("%s: expected token %q: got %q\n", tc.name, tc.token, string(token))
-		}
-		if tc.rest != string(rest) {
-			t.Errorf("%s: expected rest %q: got %q\n", tc.name, tc.rest, string(rest))
-		}
-	}
-}
-
-func TestParseSymbol(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		input string
-		token string
-		rest  string
-	}{
-		{"a", "(foo bar)", "", "(foo bar)"},
-		{"b", "foo bar)", "foo", " bar)"},
-		{"c", " bar)", "", " bar)"},
-		{"d", "bar)", "bar", ")"},
-		{"e", ")", "", ")"},
-	} {
-		token, rest := parse_symbol([]byte(tc.input))
-		if tc.token != string(token) {
-			t.Errorf("%s: expected token %q: got %q\n", tc.name, tc.token, string(token))
-		}
-		if tc.rest != string(rest) {
-			t.Errorf("%s: expected rest %q: got %q\n", tc.name, tc.rest, string(rest))
-		}
-	}
-}
-
-func TestRead(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		input  string
-		expect string
-		rest   string
-		err    error
-	}{
-		{"a", "42", "42", "", nil},
-		{"b", "(foo bar)", "(foo bar)", "", nil},
-		{"c", " ( foo  bar ) ", "(foo bar)", " ", nil},
-		{"d", "( s (t . u) v . (w . NIL))(foo)", "(s (t . u) v w)", "(foo)", nil},
-		{"e", "()", "NIL", "", nil},
-	} {
-		a, rest, err := read_expr([]byte(tc.input))
-		if err != nil {
-			if tc.err == nil {
-				t.Errorf("%s: unexpected error: %+v\n", tc.name, err)
-			} else if !errors.Is(err, tc.err) {
-				t.Errorf("%s: expected %+v: got %+v\n", tc.name, tc.err, err)
-			}
-			continue
-		}
-		if got := a.String(); tc.expect != got {
-			t.Errorf("%s: expected %q: got %q\n", tc.name, tc.expect, got)
-		}
-		if tc.rest != string(rest) {
-			t.Errorf("%s: expected rest %q: got %q\n", tc.name, tc.rest, string(rest))
-		}
-	}
-}
-
-func TestStringer(t *testing.T) {
+func TestData(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		atom   Atom
 		expect string
 	}{
 		{"a", make_int(42), "42"},
-		{"b", make_sym([]byte("FOO")), "FOO"},
-		{"c", cons(make_sym([]byte("X")), make_sym([]byte("Y"))), "(X . Y)"},
-		{"d", cons(make_int(1), cons(make_int(2), cons(make_int(3), Atom{}))), "(1 2 3)"},
+		{"b", make_sym([]byte("foo")), "foo"},
+		{"c", cons(make_sym([]byte("x")), make_sym([]byte("y"))), "(x . y)"},
+		{"d", cons(make_int(1), cons(make_int(2), cons(make_int(3), nil_))), "(1 2 3)"},
 	} {
 		a := tc.atom.String()
 		if tc.expect != a {
@@ -216,43 +48,447 @@ func TestStringer(t *testing.T) {
 	}
 }
 
-func TestEnvCreate(t *testing.T) {
+func TestParser(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		atom Atom
+		name   string
+		input  string
+		expect string
+		rest   string
+		err    error
 	}{
-		{"nil", Atom{}},
-		{"integer", make_int(42)},
-		{"pair", cons(make_int(1), make_int(2))},
-		{"symbol", make_sym([]byte("snake"))},
+		{"a", "(foo bar)", "(foo bar)", "", nil},
+		{"b", ")", "", "", Error_Syntax},
+		{"c", "(x .", "", "", Error_EOF},
+		{"d", "(x . 5 8)", "", "", Error_Syntax},
+		{"e", "42", "42", "", nil},
+		{"f", " ( foo  bar ) ", "(foo bar)", " ", nil},
+		{"g", "( s (t . u) v . (w . nil))(foo)", "(s (t . u) v w)", "(foo)", nil},
+		{"h", "()", "nil", "", nil},
 	} {
-		env := env_create(tc.atom)
-		if env.kind != AtomKind_Pair {
-			t.Errorf("%s: expected env.kind %d: got %d\n", tc.name, AtomKind_Pair, env.kind)
+		expr, rest, err := buffer{buffer: []byte(tc.input)}.Read()
+		if err != nil {
+			if tc.err == nil {
+				t.Errorf("%s: unexpected error: %+v\n", tc.name, err)
+			} else if !errors.Is(err, tc.err) {
+				t.Errorf("%s: expected %+v: got %+v\n", tc.name, tc.err, err)
+			}
 			continue
 		}
-		if car(env).kind != tc.atom.kind {
-			t.Errorf("%s: expected car(env).kind %d: got %d\n", tc.name, tc.atom.kind, car(env).kind)
-		} else {
-			switch tc.atom.kind {
-			case AtomKind_NIL:
-				// nothing else to check for NIL
-			case AtomKind_Integer:
-				if car(env).integer != tc.atom.integer {
-					t.Errorf("%s: expected car(env).integer %d: got %d\n", tc.name, tc.atom.integer, car(env).integer)
-				}
-			case AtomKind_Pair:
-				if car(env).pair != tc.atom.pair {
-					t.Errorf("%s: expected car(env).pair %p: got %p\n", tc.name, tc.atom.pair, car(env).pair)
-				}
-			case AtomKind_Symbol:
-				if !bytes.Equal(car(env).symbol, tc.atom.symbol) {
-					t.Errorf("%s: expected car(env).symbol %q: got %q\n", tc.name, string(tc.atom.symbol), string(car(env).symbol))
-				}
-			}
+		if got := expr.String(); tc.expect != got {
+			t.Errorf("%s: expected %q: got %q\n", tc.name, tc.expect, got)
 		}
-		if cdr(env).kind != AtomKind_NIL {
-			t.Errorf("%s: expected cdr(env).kind %d: got %d\n", tc.name, AtomKind_NIL, cdr(env).kind)
+		if !bytes.Equal([]byte(tc.rest), rest.buffer) {
+			t.Errorf("%s: expected rest %q: got %q\n", tc.name, tc.rest, string(rest.buffer))
+		}
+	}
+}
+
+func TestExpressions(t *testing.T) {
+	// Specification: Expressions
+
+	// When given a new environment
+	env := Init()
+	// And the input is 42
+	input := buffer{buffer: []byte("foo")}
+	// Then evaluating the expression should raise Error_Unbound
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("expressions: unexpected error: %+v\n", err)
+	} else {
+		var result Atom
+		err = eval_expr(expr, env, &result)
+		if !errors.Is(err, Error_Unbound) {
+			t.Errorf("expressions: expected %+v: got %+v\n", Error_Unbound, err)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (quote foo)
+	input = buffer{buffer: []byte("(quote foo)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("expressions: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return foo
+		expected := "foo"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("expressions: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("expressions: expected %q: got %q\n", expected, got)
+		}
+	}
+}
+
+func TestBuiltins(t *testing.T) {
+	// Specification: Built-ins
+
+	// When given a new environment
+	env := Init()
+	// And the input is (car nil)
+	input := buffer{buffer: []byte("(car nil)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return nil
+		expected := "nil"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (car '(1 . 2))
+	input = buffer{buffer: []byte("(car '(1 . 2))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 2
+		expected := "1"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (cdr nil)
+	input = buffer{buffer: []byte("(cdr nil)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return nil
+		expected := "nil"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (cdr '(1 2))
+	input = buffer{buffer: []byte("(cdr '(1 . 2))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 2
+		expected := "2"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (cons 1 2)
+	input = buffer{buffer: []byte("(cons 1 2)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return (1 . 2)
+		expected := "(1 . 2)"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (define foo 1)
+	input = buffer{buffer: []byte("(define foo 1)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return foo
+		expected := "foo"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the previous environment
+	// And the input is (define bar 2)
+	input = buffer{buffer: []byte("(define bar 2)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return bar
+		expected := "bar"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the previous environment
+	// And the input is (cons foo bar)
+	input = buffer{buffer: []byte("(cons foo bar)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return (1 . 2)
+		expected := "(1 . 2)"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the previous environment
+	// And the input is (define baz (quote (a b c)))
+	input = buffer{buffer: []byte("(define baz (quote (a b c)))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return baz
+		expected := "baz"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the previous environment
+	// And the input is (car baz)
+	input = buffer{buffer: []byte("(car baz)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return a
+		expected := "a"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the previous environment
+	// And the input is (cdr baz)
+	input = buffer{buffer: []byte("(cdr baz)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("builtins: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return (b c)
+		expected := "(b c)"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("builtins: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("builtins: expected %q: got %q\n", expected, got)
+		}
+	}
+}
+
+func TestArithmetic(t *testing.T) {
+	// Specification: Arithmetic
+
+	// When given a new environment
+	env := Init()
+	// And the input is (+ 1 1)
+	input := buffer{buffer: []byte("(+ 1 1)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("arithmetic: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 2
+		expected := "2"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("arithmetic: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("arithmetic: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (define x (* 6 9))
+	input = buffer{buffer: []byte("(define x (* 6 9))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("arithmetic: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return x
+		expected := "x"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("arithmetic: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("arithmetic: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is x
+	input = buffer{buffer: []byte("x")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("arithmetic: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 54
+		expected := "54"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("arithmetic: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("arithmetic: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (- x 12)
+	input = buffer{buffer: []byte("(- x 12)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("arithmetic: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 42
+		expected := "42"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("arithmetic: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("arithmetic: expected %q: got %q\n", expected, got)
+		}
+	}
+}
+
+func TestLambda(t *testing.T) {
+	// Specification: Lambda
+
+	// When given a new environment
+	env := Init()
+	// And the input is (define square (lambda (x) (* x x)))
+	input := buffer{buffer: []byte("(define square (lambda (x) (* x x)))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("lambda: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return square
+		expected := "square"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("lambda: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("lambda: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (square 3)
+	input = buffer{buffer: []byte("(square 3)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("lambda: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 9
+		expected := "9"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("lambda: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("lambda: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (square (square 2))
+	input = buffer{buffer: []byte("(square (square 2))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("lambda: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 16
+		expected := "16"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("lambda: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("lambda: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is ((lambda (x) (- x 2)) 7)
+	input = buffer{buffer: []byte("((lambda (x) (- x 2)) 7)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("lambda: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 5
+		expected := "5"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("lambda: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("lambda: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (define make-adder (lambda (x) (lambda (y) (+ x y))))
+	input = buffer{buffer: []byte("(define make-adder (lambda (x) (lambda (y) (+ x y))))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("lambda: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return make-adder
+		expected := "make-adder"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("lambda: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("lambda: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (define add-two (make-adder 2))
+	input = buffer{buffer: []byte("(define add-two (make-adder 2))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("lambda: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return add-two
+		expected := "add-two"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("lambda: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("lambda: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (add-two 5)
+	input = buffer{buffer: []byte("(add-two 5)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("lambda: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 7
+		expected := "7"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("lambda: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("lambda: expected %q: got %q\n", expected, got)
 		}
 	}
 }

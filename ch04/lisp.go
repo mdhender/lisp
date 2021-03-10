@@ -50,8 +50,6 @@ func Version() string {
 // Pair is a "cons" cell containing two Atoms.
 
 
-// sym_table is part of the environment and holds the list of currently defined symbols.
-
 // car returns the car of a pair. panics if p is not a pair.
 
 // cdr returns the cdr of a pair. panics if p is not a pair.
@@ -66,11 +64,6 @@ func Version() string {
 // nilp is a predicate that returns true if the argument is NIL.
 
 // print_expr relies on the Atom's stringer to return a text representation of the atom.
-
-// env_get returns a binding from an environment that looks like
-//   (parent-env bindings...)
-// where bindings is a list of binding, which look like
-//   (symbol . value)
 
 
 type AtomType int
@@ -142,6 +135,7 @@ func nilp(atom Atom) bool { return atom.type_ == AtomType_Nil }
 
 var (
 	nil_      = Atom{type_: AtomType_Nil}
+	// sym_table is part of the environment and holds the list of currently defined symbols.
 	sym_table = Atom{type_: AtomType_Nil}
 	// symbols for faster comparison
 	sym_apply    Atom
@@ -590,10 +584,16 @@ func read_expr(b buffer, result *Atom) (buffer, error) {
 	return b, parse_simple(token, result)
 }
 
+
+// env_create adds creates a new environment
 func env_create(parent Atom) Atom {
 	return cons(parent, nil_)
 }
 
+// env_get returns a binding from an environment that looks like
+//   (parent-env bindings...)
+// where bindings is a list of binding, which look like
+//   (symbol . value)
 func env_get(env, symbol Atom, result *Atom) error {
 	for bs := cdr(env); !nilp(bs); bs = cdr(bs) {
 		if b := car(bs); car(b).value.symbol == symbol.value.symbol {
@@ -604,8 +604,7 @@ func env_get(env, symbol Atom, result *Atom) error {
 
 	parent := car(env)
 	if nilp(parent) {
-		fmt.Printf("env_get symbol %q\n", string(symbol.value.symbol.name))
-		panic("return Error_Unbound")
+		return fmt.Errorf("symbol %q: %w", string(symbol.value.symbol.name), Error_Unbound)
 	}
 	return env_get(parent, symbol, result)
 }
@@ -1227,6 +1226,36 @@ func print_err(err error) {
 		return
 	}
 	panic(fmt.Sprintf("assert(error != %v)", err))
+}
+
+func Init() Atom {
+	env := env_create(nil_)
+	sym_table = nil_
+
+	// Set up the initial environment
+	sym_apply = make_sym([]byte("apply"))
+	sym_define = make_sym([]byte("define"))
+	sym_defmacro = make_sym([]byte("defmacro"))
+	sym_if = make_sym([]byte("if"))
+	sym_lambda = make_sym([]byte("lambda"))
+	sym_quote = make_sym([]byte("quote"))
+	sym_t = make_sym([]byte("t"))
+
+	env_set(env, make_sym([]byte("car")), make_builtin(builtin_car))
+	env_set(env, make_sym([]byte("cdr")), make_builtin(builtin_cdr))
+	env_set(env, make_sym([]byte("cons")), make_builtin(builtin_cons))
+	env_set(env, make_sym([]byte("+")), make_builtin(builtin_add))
+	env_set(env, make_sym([]byte("-")), make_builtin(builtin_subtract))
+	env_set(env, make_sym([]byte("*")), make_builtin(builtin_multiply))
+	env_set(env, make_sym([]byte("/")), make_builtin(builtin_divide))
+	env_set(env, sym_t, sym_t)
+	env_set(env, make_sym([]byte("=")), make_builtin(builtin_numeq))
+	env_set(env, make_sym([]byte("<")), make_builtin(builtin_less))
+	env_set(env, make_sym([]byte("apply")), make_builtin(builtin_apply))
+	env_set(env, make_sym([]byte("eq?")), make_builtin(builtin_eq))
+	env_set(env, make_sym([]byte("pair?")), make_builtin(builtin_pairp))
+
+	return env
 }
 
 func Run(script string) {
