@@ -26,58 +26,64 @@ package ch02
 
 import (
 	"bytes"
+	"reflect"
 	"testing"
 )
 
 func TestMakeInt(t *testing.T) {
-	for _, tt := range []struct {
-		name    string
-		integer int64
+	for _, tc := range []struct {
+		id    string
+		integer int
 	}{
 		{"a", 42},
 	} {
-		a := make_int(tt.integer)
-		if !(a.kind == AtomKind_Integer) {
-			t.Errorf("%s: expected AtomKind_Integer: got %d\n", tt.name, a.kind)
+		a := make_int(tc.integer)
+		integer, ok := a.(int)
+		if !ok {
+			t.Errorf("%s: expected integer: got %v\n", tc.id, reflect.TypeOf(a))
+			continue
 		}
-		if !(tt.integer == a.integer) {
-			t.Errorf("%s: expected %d: got %d\n", tt.name, tt.integer, a.integer)
+		if tc.integer != integer {
+			t.Errorf("%s: expected %d: got %d\n", tc.id, tc.integer, integer)
 		}
 	}
 }
 
 func TestMakeSym(t *testing.T) {
-	for _, tt := range []struct {
-		name   string
-		symbol string
+	for _, tc := range []struct {
+		id   string
+		symbol []byte
 	}{
-		{"snake", "snake"},
+		{"snake", []byte("snake")},
 	} {
-		s := []byte(tt.symbol)
-		a := make_sym(s)
-		if !(a.kind == AtomKind_Symbol) {
-			t.Errorf("%s: expected AtomKind_Symbol: got %d\n", tt.name, a.kind)
+		i := New()
+		a := i.make_sym([]byte(tc.symbol))
+		symbol, ok := a.(*Symbol)
+		if !ok {
+			t.Errorf("%s: expected symbol: got %v\n", tc.id, reflect.TypeOf(a))
+			continue
 		}
-		if !bytes.Equal(s, a.symbol) {
-			t.Errorf("%s: expected %q: got %q\n", tt.name, tt.symbol, string(a.symbol))
+		if !bytes.Equal(tc.symbol, symbol.name) {
+			t.Errorf("%s: expected %q: got %q\n", tc.id, string(tc.symbol), string(symbol.name))
 		}
 	}
 }
 
 func TestStringer(t *testing.T) {
-	for _, tt := range []struct {
-		name   string
+	i := New()
+	for _, tc := range []struct {
+		id   string
 		atom   Atom
 		expect string
 	}{
 		{"a", make_int(42), "42"},
-		{"b", make_sym([]byte("FOO")), "FOO"},
-		{"c", cons(make_sym([]byte("X")), make_sym([]byte("Y"))), "(X . Y)"},
-		{"d", cons(make_int(1), cons(make_int(2), cons(make_int(3), Atom{}))), "(1 2 3)"},
+		{"b", i.make_sym([]byte("FOO")), "FOO"},
+		{"c", cons(i.make_sym([]byte("X")), i.make_sym([]byte("Y"))), "(X . Y)"},
+		{"d", cons(make_int(1), cons(make_int(2), cons(make_int(3), NIL{}))), "(1 2 3)"},
 	} {
-		a := tt.atom.String()
-		if tt.expect != a {
-			t.Errorf("%s: expected %q: got %q\n", tt.name, tt.expect, a)
+		s := string(atob(tc.atom))
+		if tc.expect != s {
+			t.Errorf("%s: expected %q: got %q\n", tc.id, tc.expect, s)
 		}
 	}
 }

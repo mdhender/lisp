@@ -57,24 +57,39 @@ I converted the C code to Go and created directories and packages to match the c
 Please file an issue with the https://github.com/mdhender/lisp[GitHub repository] if you find any errors with my transcription.
 
 == Introduction
-The best way to understand how something works is to try to build it for yourself. Reading somebody else's explanation might satisfy your curiosity, but without the experience of falling into all the little traps it is difficult to get a feel for why something is designed a certain way.
+The best way to understand how something works is to try to build it for yourself.
+Reading somebody else's explanation might satisfy your curiosity, but without the experience of falling into all the little traps it is difficult to get a feel for why something is designed a certain way.
 
-It's been said that every would-be programmer should write a compiler. While I think this is good advice (although I haven't followed it myself), there is so much effort involved just in parsing a language such as C that any potential insights risk getting lost in a mire of details. Perhaps creating an interpreter for some simple language would be a good first step.
+It's been said that every would-be programmer should write a compiler.
+While I think this is good advice (although I haven't followed it myself), there is so much effort involved just in parsing a language such as C that any potential insights risk getting lost in a mire of details.
+Perhaps creating an interpreter for some simple language would be a good first step.
 
-I first started playing around with LISP a good few years ago, yet much later than I should have. This led me to the classic lecture series http://groups.csail.mit.edu/mac/classes/6.001/abelson-sussman-lectures/[Structure and Interpretation of Computer Programs]. If you have the next 24 hours free and haven't seen the videos already, go watch them now.
+I first started playing around with LISP a good few years ago, yet much later than I should have.
+This led me to the classic lecture series http://groups.csail.mit.edu/mac/classes/6.001/abelson-sussman-lectures/[Structure and Interpretation of Computer Programs].
+If you have the next 24 hours free and haven't seen the videos already, go watch them now.
 
-The course covers many topics, but the second half shows in detail how to evaluate LISP, first by implementing a simple version of eval in LISP itself. I figured that this would translate well into C, and so decided to try creating my own implementation of LISP.
+The course covers many topics, but the second half shows in detail how to evaluate LISP, first by implementing a simple version of eval in LISP itself.
+I figured that this would translate well into Go, and so decided to try creating my own implementation of LISP.
 
 It was really easy.
 
-This article is an attempt to share the process by which I built my implementation, and the chapters occur roughly in the order in which I did things. Why not follow along and create your own version in your language of choice?
-footnote:[If you are using a fancy language which supports something like eval, it would be cool to expose the native datatypes to the LISP environment.]
+This article is an attempt to share the process by which I built my implementation, and the chapters occur roughly in the order in which I did things.
+Why not follow along and create your own version in your language of choice?
 
-As a professional programmer (ha, ha), I spend the majority of my time writing C and C++. Most of the rest is Java. There are many languages out there, each with their own debatable merits, but I'd like to demonstrate just how simple a LISP machine can be — even built in as low-level a language as C. See John McCarthy's http://www-formal.stanford.edu/jmc/history/lisp/lisp.html[History of LISP] for the story of the pioneers.
+NOTE: If you are using a fancy language which supports something like eval, it would be cool to expose the native datatypes to the LISP environment.
 
-So here is my toy implementation of LISP. I've borrowed features from various dialects, but it's closer to Scheme than Common LISP. The differences are trivial enough that changing over would not require substantial changes to the interpreter. Don't worry if you're not familiar with LISP; I will define everything as I go along.
+As a professional programmer (ha, ha), I spend the majority of my time writing C and C++.
+Most of the rest is Java.
+There are many languages out there, each with their own debatable merits, but I'd like to demonstrate just how simple a LISP machine can be — even built in as low-level a language as Go.
+See John McCarthy's http://www-formal.stanford.edu/jmc/history/lisp/lisp.html[History of LISP] for the story of the pioneers.
 
-It is not meant to be the smallest possible implementation, nor the most efficient, nor the most complete; it could however be described as lazy. My goal was to write robust, easy-to-read code that does exactly what it needs to, and no more, and I hope that it conveys how little effort is required to construct an incredibly powerful environment like LISP.
+So here is my toy implementation of LISP.
+I've borrowed features from various dialects, but it's closer to Scheme than Common LISP.
+The differences are trivial enough that changing over would not require substantial changes to the interpreter.
+Don't worry if you're not familiar with LISP; I will define everything as I go along.
+
+It is not meant to be the smallest possible implementation, nor the most efficient, nor the most complete; it could however be described as lazy.
+My goal was to write robust, easy-to-read code that does exactly what it needs to, and no more, and I hope that it conveys how little effort is required to construct an incredibly powerful environment like LISP.
 
 == Data
 We will define four kinds of object to begin with:
@@ -82,38 +97,40 @@ We will define four kinds of object to begin with:
 Integer::
 A number. For example: 3, -9, 0.
 Symbol::
-A name consisting of a string of characters. For example: `FOO`, `BAR`, `ADD-TWO`. The names are case-sensitive, so `foo`, `Foo`, and `FOO` are three distinct symbols.
+A name consisting of a string of characters. For example: `FOO`, `BAR`, `ADD-TWO`.
+The names are case-sensitive, so `foo`, `Foo`, and `FOO` are three distinct symbols.
 NIL::
-Represents "nothing". A bit like `nil` in Go and other languages.
+Represents "nothing".
+A bit like `nil` in Go and other languages.
 Pair::
-A pair consists of two elements, which for historical reasons are called *car* and *cdr*. Both can hold either an integer, a symbol, `NIL`, or a reference to another pair. The types of each element may be different.
+A pair consists of two elements, which for historical reasons are called *car* and *cdr*.
+Both can hold either an integer, a symbol, `NIL`, or a reference to another pair.
+The types of each element may be different.
 
-Integers, symbols and NIL are called simple data. The term *atom* can refer to either a simple datum or a pair (purists may disagree on this point).
+Integers, symbols and NIL are called simple data.
+The term *cell* can refer to either a simple datum or a pair (purists may disagree on this point).
 
-Note that integers and symbols are immutable, so we can think of two integers with the same value as being the same object. This is particularly useful for symbols, because it allows us to test for equality by comparing pointers.
+NOTE: Integers and symbols are immutable, so we can think of two integers with the same value as being the same object.
+This is particularly useful for symbols, because it allows us to test for equality by comparing pointers.
 
 === Implementation
 Let's declare some types to hold our data. There are many clever ways to store LISP objects efficiently, but for this implementation we will stick to a very simple scheme [please excuse the pun].
 
 [source,go]
 ----
-type AtomKind int
-const ( // enums for AtomKind
-	AtomKind_NIL AtomKind = iota
-	AtomKind_Pair
-	AtomKind_Symbol
-	AtomKind_Integer
-)
+// Atom holds datums
+type Atom interface {}
 
-type Atom struct {
-	kind    AtomKind
-    integer int64
-    pair    *Pair
-    symbol  []byte
+// Pair holds a pair of cells, which for historical reasons are called car and cdr
+type Pair struct {
+	car Cell
+	cdr Cell
 }
 
-type Pair struct {
-	atom [2]Atom
+// Cell is our basic unit of memory allocation
+type Cell struct {
+	atom *Atom
+	pair *Pair
 }
 ----
 
@@ -121,20 +138,17 @@ A few helper functions will be handy.
 
 [source,go]
 ----
+// car returns the car of a pair. panics if cell is not a pair.
+func car(c Cell) Cell { return c.pair.car }
+
+// cdr returns the cdr of a pair. panics if cell is not a pair.
+func cdr(c Cell) Cell { return c.pair.cdr }
+
 // nilp is a predicate that returns true if the argument is NIL.
 func nilp(a Atom) bool { return a.kind == AtomKind_NIL }
 ----
 
 The "p" in `nilp` stands for "predicate". Identifiers in Go may not contain question marks. There is no need to restrict our LISP implementation in that way, of course.
-
-[source,go]
-----
-// car returns the car of a pair. panics if p is not a pair.
-func car(p Atom) Atom { return p.pair.atom[0] }
-
-// cdr returns the cdr of a pair. panics if p is not a pair.
-func cdr(p Atom) Atom { return p.pair.atom[1] }
-----
 
 Integers and (pointers to) strings can be copied around, but we need to allocate pairs on the heap.
 
@@ -728,6 +742,308 @@ func TestRead(t *testing.T) {
 Looks good! Remember that `()` is exactly the same as `NIL`, and that `(X Y)` is just another way of writing `(X . (Y . NIL))`.
 
 == Expressions
+This chapter is about expressions, environment, and evaluation.
+
+=== Expressions
+LISP is all about expressions. An expression can be a literal, an identifier, or a list consisting of an operator and one or more arguments.
+
+A literal is an object with an intrinsic value. In our system, that's either an integer or NIL (if you consider "nothing" to be a value).
+
+An identifier is a name for an object. Symbols can be identifiers.
+
+Everything else is a list of the form (operator argument...) where argument... means zero or more arguments.
+
+=== Environment
+To associate identifiers with objects we need an environment. This is a collection of *bindings*, each of which consists of an identifier and its corresponding value. For example:
+
+[caption=""]
+.Bindings
+|====
+|Identifier|Value
+
+|FOO|42
+|BAR|NIL
+|BAZ|(X Y Z)
+|====
+
+NOTE: Identifiers are all symbols, but the values can be any object within our system of data — the value for `BAZ` is a list containing three symbols.
+
+An environment can also have a parent environment. If there is no binding for a particular identifier in the environment, we can check the parent, the parent's parent and so on. In this way we can create a tree of environments which share bindings with their ancestors unless explicit replacements exist.
+
+=== Implementation
+There is a convenient way of representing environments using our LISP data types:
+[source,lisp]
+----
+(parent (identifier . value)...)
+----
+So the environment above (assuming it has no parent) is:
+[source,lisp]
+----
+(NIL (FOO . 42)
+     (BAR . NIL)
+     (BAZ . (X Y Z)))
+----
+Here is a function to create an empty environment with a specified parent (which could be NIL):
+
+[source,go]
+----
+func env_create(parent Atom) Atom {
+	return cons(parent, Atom{})
+}
+----
+
+Testing that function is fairly straight-forward:
+
+[source,go]
+----
+func TestEnvCreate(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		atom Atom
+	}{
+		{"nil", Atom{}},
+		{"integer", make_int(42)},
+		{"pair", cons(make_int(1), make_int(2))},
+		{"symbol", make_sym([]byte("snake"))},
+	} {
+		env := env_create(tc.atom)
+		if env.kind != AtomKind_Pair {
+			t.Errorf("%s: expected env.kind %d: got %d\n", tc.name, AtomKind_Pair, env.kind)
+			continue
+		}
+		if car(env).kind != tc.atom.kind {
+			t.Errorf("%s: expected car(env).kind %d: got %d\n", tc.name, tc.atom.kind, car(env).kind)
+		} else {
+			switch tc.atom.kind {
+			case AtomKind_NIL:
+				// nothing else to check for NIL
+			case AtomKind_Integer:
+				if car(env).integer != tc.atom.integer {
+					t.Errorf("%s: expected car(env).integer %d: got %d\n", tc.name, tc.atom.integer, car(env).integer)
+				}
+			case AtomKind_Pair:
+				if car(env).pair != tc.atom.pair {
+					t.Errorf("%s: expected car(env).pair %p: got %p\n", tc.name, tc.atom.pair, car(env).pair)
+				}
+			case AtomKind_Symbol:
+				if !bytes.Equal(car(env).symbol, tc.atom.symbol) {
+					t.Errorf("%s: expected car(env).symbol %q: got %q\n", tc.name, string(tc.atom.symbol), string(car(env).symbol))
+				}
+			}
+		}
+		if cdr(env).kind != AtomKind_NIL {
+			t.Errorf("%s: expected cdr(env).kind %d: got %d\n", tc.name, AtomKind_NIL, cdr(env).kind)
+		}
+	}
+}
+----
+
+Next we have two functions to retrieve and create bindings in an environment.
+
+[source,cgo]
+----
+// env_get returns a binding from an environment that looks like
+//   (parent-env bindings...)
+// where bindings is a list of binding, which look like
+//   (symbol . value)
+func env_get(env, symbol Atom) (Atom, error) {
+	for !nilp(env) {
+		// search all the bindings in the current environment
+		for bindings := cdr(env); !nilp(bindings); bindings = cdr(bindings) {
+			if binding := car(bindings); bytes.Equal(car(binding).symbol, symbol.symbol) {
+				return cdr(binding), nil
+			}
+		}
+		// binding not found, so search the parent of the current environment
+		env = car(env)
+	}
+	return Atom{}, ErrorUnbound
+}
+----
+
+NOTE: In an earlier chapter, we claimed that we were going to prevent duplicate symbols so that we could compare them by comparing pointers. That wasn't true. In Go, you can't compare the adresses of two byte slices.
+----
+
+Disallowing duplicate symbols means that we don't have to call `strcmp` here, which should mean that this lookup function is not too slow.
+[source,cgo]
+----
+int env_set(Atom env, Atom symbol, Atom value)
+{
+	Atom bs = cdr(env);
+	Atom b = nil;
+
+	while (!nilp(bs)) {
+		b = car(bs);
+		if (car(b).value.symbol == symbol.value.symbol) {
+			cdr(b) = value;
+			return Error_OK;
+		}
+		bs = cdr(bs);
+	}
+
+	b = cons(symbol, value);
+	cdr(env) = cons(b, cdr(env));
+
+	return Error_OK;
+}
+----
+Only `env_get` recursively checks the parent environments. We don't want to modify the bindings of parents.
+
+=== Evaluation
+Now that we have expressions, we can start to evaluate them. Evalution is a process which takes an expression and an environment, and produces a value (the result). Let's specify the rules.
+
+* A literal will evaluate to itself.
+* The environment allows us to determine a value for an identifier. Attempting to evaluate an identifier for which no binding exists is an error.
+* A list expression with one of the following operators is called a special form:
+
+QUOTE::
+The result of evaluating (QUOTE EXPR) is EXPR, which is returned without evaluating.
+DEFINE::
+Evaluating (DEFINE SYMBOL EXPR) creates a binding for SYMBOL (or modifies an existing binding) in the evaluation environment. SYMBOL is bound to the value obtained by evaluating EXPR. The final result is SYMBOL.
+
+Anything else, including list expressions with any other operator, is invalid.
+
+=== Implementation
+We will need to check whether an expression is a proper list.
+
+[source,cgo]
+----
+int listp(Atom expr)
+{
+    while (!nilp(expr)) {
+        if (expr.type != AtomType_Pair)
+            return 0;
+        expr = cdr(expr);
+    }
+	return 1;
+}
+----
+The Error enumeration needs a few more entries:
+
+|===
+|Error_Unbound|Attempted to evaluate a symbol for which no binding exists
+|Error_Args|A list expression was shorter or longer than expected
+|Error_Type|An object in an expression was of a different type than expected
+|===
+
+The function to perform evaluation is now a straightforward translation of the rules into C.
+
+[source,cgo]
+----
+int eval_expr(Atom expr, Atom env, Atom *result)
+{
+	Atom op, args;
+	Error err;
+
+	if (expr.type == AtomType_Symbol) {
+		return env_get(env, expr, result);
+	} else if (expr.type != AtomType_Pair) {
+		*result = expr;
+		return Error_OK;
+	}
+
+	if (!listp(expr))
+		return Error_Syntax;
+
+	op = car(expr);
+	args = cdr(expr);
+
+	if (op.type == AtomType_Symbol) {
+		if (strcmp(op.value.symbol, "QUOTE") == 0) {
+			if (nilp(args) || !nilp(cdr(args)))
+				return Error_Args;
+
+			*result = car(args);
+			return Error_OK;
+		} else if (strcmp(op.value.symbol, "DEFINE") == 0) {
+			Atom sym, val;
+
+			if (nilp(args) || nilp(cdr(args)) || !nilp(cdr(cdr(args))))
+				return Error_Args;
+
+			sym = car(args);
+			if (sym.type != AtomType_Symbol)
+				return Error_Type;
+
+			err = eval_expr(car(cdr(args)), env, &val);
+			if (err)
+				return err;
+
+			*result = sym;
+			return env_set(env, sym, val);
+		}
+	}
+
+	return Error_Syntax;
+}
+----
+
+=== Testing
+Extending the read-print loop from the previous chapter, we now have a read-eval-print loop (REPL). This is the core of our LISP interpreter.
+
+[source,cgo]
+----
+int main(int argc, char **argv)
+{
+	Atom env;
+	char *input;
+
+	env = env_create(nil);
+
+	while ((input = readline("> ")) != NULL) {
+		const char *p = input;
+		Error err;
+		Atom expr, result;
+
+		err = read_expr(p, &p, &expr);
+
+		if (!err)
+			err = eval_expr(expr, env, &result);
+
+		switch (err) {
+		case Error_OK:
+			print_expr(result);
+			putchar('\n');
+			break;
+		case Error_Syntax:
+			puts("Syntax error");
+			break;
+		case Error_Unbound:
+			puts("Symbol not bound");
+			break;
+		case Error_Args:
+			puts("Wrong number of arguments");
+			break;
+		case Error_Type:
+			puts("Wrong type");
+			break;
+		}
+
+		free(input);
+	}
+
+	return 0;
+}
+----
+Let's see what it can do.
+
+[source,lisp]
+----
+> foo
+Symbol not bound
+> (quote foo)
+FOO
+> (define foo 42)
+FOO
+> foo
+42
+> (define foo (quote bar))
+FOO
+> foo
+BAR
+----
+We can now interactively assign names to objects.
+
 
 == Built-in functions
 

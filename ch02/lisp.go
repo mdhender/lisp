@@ -27,104 +27,135 @@ package ch02
 import (
 	"bytes"
 	"fmt"
-	"strings"
+	"reflect"
 )
 
-func Version() string {
+type Interpreter struct {
+	// sym_table is part of the environment and holds the list of currently defined symbols.
+	sym_table Atom
+}
+
+func New() *Interpreter {
+	return &Interpreter{
+		sym_table: NIL{},
+	}
+}
+
+func (i *Interpreter) Version() string {
 	return "chapter-02"
 }
 
-// AtomKind is an enum for the type of data stored in an Atom.
-type AtomKind int
+// Atom is our basic unit of storage.
+type Atom interface {}
 
-// enums for AtomKind
-const (
-	AtomKind_NIL AtomKind = iota
-	AtomKind_Pair
-	AtomKind_Symbol
-	AtomKind_Integer
-)
-
-// Atom is our most primitive unit of storage.
-type Atom struct {
-	kind    AtomKind
-	integer int64
-	pair    *Pair
-	symbol  []byte
+// Pair is a pair of two atoms.
+type Pair struct {
+	car Atom
+	cdr Atom
 }
 
-// Pair is a "cons" cell containing two Atoms.
-type Pair struct {
-	atom [2]Atom
+type NIL struct{}
+func (n NIL) ToExpr() []byte {
+	return []byte{'N','I','L'}
+}
+
+type SExpr interface {
+	ToExpr() []byte
+}
+
+type Symbol struct {
+	name []byte
+}
+func (s *Symbol) ToExpr() []byte {
+	return s.name
+}
+
+// car returns the car of a pair.
+// panics if input is not a pair.
+func car(a Atom) Atom {
+	p, ok := a.(*Pair)
+	if !ok {
+		panic("assert(car arg is a pair)")
+	}
+	return p.car
+}
+
+// cdr returns the cdr of a pair.
+// panics if input is not a pair.
+func cdr(a Atom) Atom {
+	p, ok := a.(*Pair)
+	if !ok {
+		panic("assert(cdr arg is a pair)")
+	}
+	return p.cdr
+}
+
+// pairp is a predicate that returns true if the argument is a pair.
+func pairp(a Atom) bool {
+	_, ok := a.(*Pair)
+	return ok
 }
 
 // nilp is a predicate that returns true if the argument is NIL.
-func nilp(a Atom) bool { return a.kind == AtomKind_NIL }
+func nilp(a Atom) bool {
+	_, ok := a.(NIL)
+	return ok
+}
 
-// car returns the car of a pair. panics if p is not a pair.
-func car(p Atom) Atom { return p.pair.atom[0] }
-
-// cdr returns the cdr of a pair. panics if p is not a pair.
-func cdr(p Atom) Atom { return p.pair.atom[1] }
-
-// cons returns a Pair from the heap.
+// cons returns a pair from the heap.
 func cons(car, cdr Atom) Atom {
-	return Atom{kind: AtomKind_Pair, pair: &Pair{atom: [2]Atom{car, cdr}}}
+	return &Pair{car: car, cdr: cdr}
 }
 
 // make_int returns a new Atom with the given integer value.
-func make_int(x int64) Atom {
-	return Atom{kind: AtomKind_Integer, integer: x}
+func make_int(x int) Atom {
+	return x
 }
-
-// sym_table is part of the environment and holds the list of currently defined symbols.
-var sym_table Atom
 
 // make_sym returns an Atom with the given symbol value.
 // If the symbol already exists, we return a copy of it from the symbol table.
-func make_sym(s []byte) Atom {
-	for p := sym_table; !nilp(p); p = cdr(p) {
-		if bytes.Equal(car(p).symbol, s) {
-			return car(p)
+func (i *Interpreter) make_sym(name []byte) Atom {
+	for p := i.sym_table; !nilp(p); p = cdr(p) {
+		a := car(p)
+		if st, ok := a.(*Symbol); ok && bytes.Equal(name, st.name) {
+			return a
 		}
 	}
-	a := Atom{kind: AtomKind_Symbol, symbol: make([]byte, len(s), len(s))}
-	copy(a.symbol, s)
-	sym_table = cons(a, sym_table)
+	a := &Symbol{name: name}
+	i.sym_table = cons(a, i.sym_table)
 	return a
 }
 
 // print_expr relies on the Atom's stringer to return a text representation of the atom.
 func print_expr(a Atom) {
-	fmt.Printf("%s", a.String())
+	fmt.Printf("%s", string(atob(a)))
 }
 
-// String implements the stringer interface.
-func (a Atom) String() string {
-	switch a.kind {
-	case AtomKind_NIL:
-		return "NIL"
-	case AtomKind_Integer:
-		return fmt.Sprintf("%d", a.integer)
-	case AtomKind_Symbol:
-		return string(a.symbol)
-	case AtomKind_Pair:
-		sb := strings.Builder{}
-		sb.WriteString("(")
-		sb.WriteString(car(a).String())
+func atob(a Atom) []byte {
+	if s, ok := a.(SExpr); ok {
+		return s.ToExpr()
+	}
+	switch a.(type) {
+	case int:
+		integer, _ := a.(int)
+		return []byte(fmt.Sprintf("%d", integer))
+	case *Symbol:
+		symbol, _ := a.(*Symbol)
+		return symbol.name
+	case *Pair:
+		b := append([]byte{'('}, atob(car(a))...)
 		a = cdr(a)
 		for !nilp(a) {
-			if a.kind != AtomKind_Pair {
-				sb.WriteString(" . ")
-				sb.WriteString(a.String())
+			if !pairp(a) {
+				b = append(b, ' ', '.', ' ')
+				b = append(b, atob(a)...)
 				break
 			}
-			sb.WriteString(" ")
-			sb.WriteString(car(a).String())
+			b = append(b, ' ')
+			b = append(b, atob(car(a))...)
 			a = cdr(a)
 		}
-		sb.WriteString(")")
-		return sb.String()
+		return append(b, ')')
 	}
-	panic(fmt.Sprintf("assert(atom.kind != %d)", a.kind))
+	panic(fmt.Sprintf("assert(atom.type != %v)", reflect.TypeOf(a)))
 }
