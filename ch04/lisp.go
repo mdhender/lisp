@@ -49,7 +49,6 @@ func Version() string {
 
 // Pair is a "cons" cell containing two Atoms.
 
-
 // car returns the car of a pair. panics if p is not a pair.
 
 // cdr returns the cdr of a pair. panics if p is not a pair.
@@ -64,7 +63,6 @@ func Version() string {
 // nilp is a predicate that returns true if the argument is NIL.
 
 // print_expr relies on the Atom's stringer to return a text representation of the atom.
-
 
 type AtomType int
 
@@ -134,7 +132,7 @@ func nilp(atom Atom) bool { return atom.type_ == AtomType_Nil }
 // func setcdr(p, atom Atom) { p.value.pair.atom[1] = atom }
 
 var (
-	nil_      = Atom{type_: AtomType_Nil}
+	nil_ = Atom{type_: AtomType_Nil}
 	// sym_table is part of the environment and holds the list of currently defined symbols.
 	sym_table = Atom{type_: AtomType_Nil}
 	// symbols for faster comparison
@@ -583,7 +581,6 @@ func read_expr(b buffer, result *Atom) (buffer, error) {
 	}
 	return b, parse_simple(token, result)
 }
-
 
 // env_create adds creates a new environment
 func env_create(parent Atom) Atom {

@@ -46,7 +46,7 @@ func (i *Interpreter) Version() string {
 }
 
 // Atom is our basic unit of storage.
-type Atom interface {}
+type Atom interface{}
 
 // Pair is a pair of two atoms.
 type Pair struct {
@@ -55,8 +55,9 @@ type Pair struct {
 }
 
 type NIL struct{}
+
 func (n NIL) ToExpr() []byte {
-	return []byte{'N','I','L'}
+	return []byte{'N', 'I', 'L'}
 }
 
 type SExpr interface {
@@ -66,6 +67,7 @@ type SExpr interface {
 type Symbol struct {
 	name []byte
 }
+
 func (s *Symbol) ToExpr() []byte {
 	return s.name
 }

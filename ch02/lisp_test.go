@@ -32,7 +32,7 @@ import (
 
 func TestMakeInt(t *testing.T) {
 	for _, tc := range []struct {
-		id    string
+		id      string
 		integer int
 	}{
 		{"a", 42},
@@ -51,7 +51,7 @@ func TestMakeInt(t *testing.T) {
 
 func TestMakeSym(t *testing.T) {
 	for _, tc := range []struct {
-		id   string
+		id     string
 		symbol []byte
 	}{
 		{"snake", []byte("snake")},
@@ -72,7 +72,7 @@ func TestMakeSym(t *testing.T) {
 func TestStringer(t *testing.T) {
 	i := New()
 	for _, tc := range []struct {
-		id   string
+		id     string
 		atom   Atom
 		expect string
 	}{

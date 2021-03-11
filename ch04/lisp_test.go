@@ -492,3 +492,125 @@ func TestLambda(t *testing.T) {
 		}
 	}
 }
+
+func TestBooleans(t *testing.T) {
+	// Specification: Booleans
+
+	// When given a new environment
+	env := Init()
+	// And the input is (if t 3 4)
+	input := buffer{buffer: []byte("(if t 3 4)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("booleans: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 3
+		expected := "3"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("booleans: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("booleans: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (if nil 3 4)
+	input = buffer{buffer: []byte("(if nil 3 4)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("booleans: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 4
+		expected := "4"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("booleans: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("booleans: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (if 0 t nil)
+	input = buffer{buffer: []byte("(if 0 t nil)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("booleans: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return t
+		expected := "t"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("booleans: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("booleans: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (= 3 3)
+	input = buffer{buffer: []byte("(= 3 3)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("booleans: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return t
+		expected := "t"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("booleans: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("booleans: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (< 11 4)
+	input = buffer{buffer: []byte("(< 11 4)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("booleans: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return nil
+		expected := "nil"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("booleans: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("booleans: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (define fact(lambda(x)(if(= x 0)1(* x(fact(- x 1))))))
+	input = buffer{buffer: []byte("(define fact(lambda(x)(if(= x 0)1(* x(fact(- x 1))))))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("booleans: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return fact
+		expected := "fact"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("booleans: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("booleans: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (fact 10)
+	input = buffer{buffer: []byte("(fact 10)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("booleans: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 3628800
+		expected := "3628800"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("booleans: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("booleans: expected %q: got %q\n", expected, got)
+		}
+	}
+}
