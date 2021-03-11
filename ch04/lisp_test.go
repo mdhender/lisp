@@ -806,4 +806,37 @@ func TestSyntacticSugar(t *testing.T) {
 			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
 		}
 	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (define (square x) (* x x))
+	input = buffer{buffer: []byte("(define (square x) (* x x))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return square
+		expected := "square"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (square (square 3))
+	input = buffer{buffer: []byte("(square (square 3))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 81
+		expected := "81"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		}
+	}
 }
