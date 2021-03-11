@@ -121,7 +121,8 @@ type Pair struct {
 }
 
 type Symbol struct {
-	name []byte
+	value string
+	name  []byte
 }
 
 func car(p Atom) Atom     { return p.value.pair.atom[0] }
@@ -186,7 +187,7 @@ func make_sym(s []byte) Atom {
 
 	var a Atom
 	a.type_ = AtomType_Symbol
-	a.value.symbol = &Symbol{name: strdup(s)}
+	a.value.symbol = &Symbol{value: string(s), name: strdup(s)}
 	sym_table = cons(a, sym_table)
 
 	return a
@@ -286,7 +287,7 @@ func (atom Atom) String() string {
 		sb.WriteByte(')')
 		return sb.String()
 	case AtomType_Symbol:
-		return fmt.Sprintf("%s", string(atom.value.symbol.name))
+		return fmt.Sprintf("%s", atom.value.symbol.name) //string(atom.value.symbol.name))
 	case AtomType_Integer:
 		return fmt.Sprintf("%d", atom.value.integer)
 	case AtomType_Builtin:
@@ -450,95 +451,6 @@ func (b buffer) SkipSpacesAndComments() buffer {
 	}
 }
 
-func lex(b buffer) ([]byte, buffer, error) {
-	for !b.IsEOF() && bytes.IndexByte([]byte(" \t\r\n"), b.buffer[0]) != -1 { // whitespace
-		if b.buffer[0] == '\n' {
-			b.line, b.col = b.line+1, 0
-		}
-		b.col, b.buffer = b.col+1, b.buffer[1:]
-	}
-
-	if b.IsEOF() {
-		return nil, b, Error_Syntax
-	}
-
-	var lexeme []byte
-	if bytes.IndexByte([]byte("()'`"), b.buffer[0]) != -1 { // prefix
-		lexeme = append(lexeme, b.buffer[0])
-		b.col, b.buffer = b.col+1, b.buffer[1:]
-	} else if b.buffer[0] == ',' {
-		lexeme = append(lexeme, b.buffer[0])
-		b.col, b.buffer = b.col+1, b.buffer[1:]
-		if !b.IsEOF() && b.buffer[0] == '@' {
-			lexeme = append(lexeme, b.buffer[0])
-			b.col, b.buffer = b.col+1, b.buffer[1:]
-		}
-	} else {
-		for !b.IsEOF() && bytes.IndexByte([]byte("() \t\r\n"), b.buffer[0]) == -1 { // delimiter
-			lexeme = append(lexeme, b.buffer[0])
-			b.col, b.buffer = b.col+1, b.buffer[1:]
-		}
-	}
-
-	return lexeme, b, Error_OK
-}
-
-func parse_simple(b []byte, result *Atom) error {
-	if bytes.Equal(b, []byte{'n', 'i', 'l'}) { // the 'nil' keyworkd
-		*result = nil_
-	} else if val, err := strconv.Atoi(string(b)); err == nil { // an integer
-		result.type_ = AtomType_Integer
-		result.value.integer = val
-	} else { // symbol
-		*result = make_sym(b)
-	}
-	return Error_OK
-}
-
-func read_list(b buffer, result *Atom) (buffer, error) {
-	var p Atom
-	*result = nil_
-
-	for {
-		var token []byte
-		var item Atom
-		var err error
-
-		if token, b, err = lex(b); err != nil {
-			return b, err
-		} else if token[0] == ')' {
-			return b, Error_OK
-		} else if token[0] == '.' && len(token) == 1 {
-			// Improper list
-			if nilp(p) {
-				return b, Error_Syntax
-			}
-			if b, err = read_expr(b, &item); err != nil {
-				return b, err
-			}
-			p.value.pair.atom[1] = item // setcdr
-
-			// Read the closing ')'
-			token, b, err = lex(b)
-			if err == nil && token[0] != ')' {
-				err = Error_Syntax
-			}
-			return b, err
-		}
-
-		if b, err = read_expr(b, &item); err != nil {
-			return b, err
-		} else if nilp(p) {
-			// First item
-			*result = cons(item, nil_)
-			p = *result
-		} else {
-			p.value.pair.atom[1] = cons(item, nil_) // setcdr
-			p = cdr(p)
-		}
-	}
-}
-
 func (b buffer) dump(i int) {
 	if b.IsEOF() {
 		fmt.Printf("[buffer] %4d/%3d %4d %s\n", b.line, b.col, i, "empty")
@@ -547,39 +459,6 @@ func (b buffer) dump(i int) {
 	} else {
 		fmt.Printf("[buffer] %4d/%3d %4d %q\n", b.line, b.col, i, string(b.buffer[:20]))
 	}
-}
-
-func read_expr(b buffer, result *Atom) (buffer, error) {
-	var token []byte
-	var err error
-
-	if token, b, err = lex(b); err != nil {
-		return b, err
-	}
-
-	switch token[0] {
-	case '(':
-		return read_list(b, result)
-	case ')':
-		return b, Error_Syntax
-	case '\'':
-		*result = cons(make_sym([]byte("quote")), cons(nil_, nil_))
-		// return read_expr(b, car(cdr(*result))
-		return read_expr(b, &result.value.pair.atom[1].value.pair.atom[0])
-	case '`':
-		*result = cons(make_sym([]byte("quasiquote")), cons(nil_, nil_))
-		// return read_expr(b, car(cdr(*result))
-		return read_expr(b, &result.value.pair.atom[1].value.pair.atom[0])
-	case ',':
-		if len(token) != 0 && token[1] == '@' {
-			*result = cons(make_sym([]byte("unquote-splicing")), cons(nil_, nil_))
-		} else {
-			*result = cons(make_sym([]byte("unquote")), cons(nil_, nil_))
-		}
-		// return read_expr(b, car(cdr(*result))
-		return read_expr(b, &result.value.pair.atom[1].value.pair.atom[0])
-	}
-	return b, parse_simple(token, result)
 }
 
 // env_create adds creates a new environment
@@ -687,8 +566,8 @@ func builtin_car(args Atom, result *Atom) error {
 	} else if nilp(car(args)) {
 		*result = nil_
 	} else if !ispair(car(args)) {
-		fmt.Println(456)
-		return Error_Type
+		fmt.Println(args)
+		return fmt.Errorf("690: %w", Error_Type)
 	} else {
 		*result = car(car(args))
 	}
@@ -1259,13 +1138,13 @@ func Run(script string) {
 	env := env_create(nil_)
 
 	// Set up the initial environment
-	sym_t = make_sym([]byte("t"))
-	sym_quote = make_sym([]byte("quote"))
-	sym_define = make_sym([]byte("define"))
-	sym_lambda = make_sym([]byte("lambda"))
-	sym_if = make_sym([]byte("if"))
-	sym_defmacro = make_sym([]byte("defmacro"))
 	sym_apply = make_sym([]byte("apply"))
+	sym_define = make_sym([]byte("define"))
+	sym_defmacro = make_sym([]byte("defmacro"))
+	sym_if = make_sym([]byte("if"))
+	sym_lambda = make_sym([]byte("lambda"))
+	sym_quote = make_sym([]byte("quote"))
+	sym_t = make_sym([]byte("t"))
 
 	env_set(env, make_sym([]byte("car")), make_builtin(builtin_car))
 	env_set(env, make_sym([]byte("cdr")), make_builtin(builtin_cdr))

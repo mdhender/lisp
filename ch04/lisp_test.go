@@ -27,6 +27,7 @@ package ch04
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -88,7 +89,7 @@ func TestExpressions(t *testing.T) {
 
 	// When given a new environment
 	env := Init()
-	// And the input is 42
+	// And the input is foo
 	input := buffer{buffer: []byte("foo")}
 	// Then evaluating the expression should raise Error_Unbound
 	if expr, _, err := input.Read(); err != nil {
@@ -973,6 +974,294 @@ func TestVariadics(t *testing.T) {
 			t.Errorf("variadics: unexpected error: %+v\n", err)
 		} else if got := result.String(); got != expected {
 			t.Errorf("variadics: expected %q: got %q\n", expected, got)
+		}
+	}
+}
+
+func TestMacros(t *testing.T) {
+	// Specification: Macros
+
+	// When given a new environment
+	env := Init()
+	// And the input is (defmacro (ignore x) (cons 'quote (cons x nil)))
+	input := buffer{buffer: []byte("(defmacro (ignore x) (cons 'quote (cons x nil)))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("macros: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return ignore
+		expected := "ignore"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("macros: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("macros: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (ignore foo)
+	input = buffer{buffer: []byte("(ignore foo)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("macros: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return foo
+		expected := "foo"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("macros: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("macros: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is foo
+	input = buffer{buffer: []byte("foo")}
+	// Then evaluating the expression should raise Error_Unbound
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("macros: unexpected error: %+v\n", err)
+	} else {
+		var result Atom
+		err = eval_expr(expr, env, &result)
+		if !errors.Is(err, Error_Unbound) {
+			t.Errorf("macros: expected %+v: got %+v\n", Error_Unbound, err)
+		}
+	}
+}
+
+func TestQuasiquotation(t *testing.T) {
+	// Specification: Quasiquotation
+
+	// When given a new environment
+	sym_table = Atom{type_: AtomType_Nil}
+	env := Init()
+	fmt.Println(sym_table)
+	var input buffer
+	//// And the input is (define (foldr proc init list) (if list (proc (car list) (foldr proc init (cdr list))) init))
+	//input := buffer{buffer: []byte("(define (foldr proc init list) (if list (proc (car list) (foldr proc init (cdr list))) init))")}
+	//if expr, _, err := input.Read(); err != nil {
+	//	t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//} else {
+	//	// Then evaluating the expression should return foldr
+	//	expected := "foldr"
+	//	var result Atom
+	//	if err = eval_expr(expr, env, &result); err != nil {
+	//		t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//	} else if got := result.String(); got != expected {
+	//		t.Errorf("quasiquotation: expected %q: got %q\n", expected, got)
+	//	}
+	//}
+	//
+	//// When given the prior environment
+	//// And the input is (define (list . items) (foldr cons nil items))
+	//input = buffer{buffer: []byte("(define (list . items) (foldr cons nil items))")}
+	//if expr, _, err := input.Read(); err != nil {
+	//	t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//} else {
+	//	// Then evaluating the expression should return list
+	//	expected := "list"
+	//	var result Atom
+	//	if err = eval_expr(expr, env, &result); err != nil {
+	//		t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//	} else if got := result.String(); got != expected {
+	//		t.Errorf("quasiquotation: expected %q: got %q\n", expected, got)
+	//	}
+	//}
+	//
+	//// When given the prior environment
+	//// And the input is (define (append a b) (foldr cons b a))
+	//input = buffer{buffer: []byte("(define (append a b) (foldr cons b a))")}
+	//if expr, _, err := input.Read(); err != nil {
+	//	t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//} else {
+	//	// Then evaluating the expression should return append
+	//	expected := "append"
+	//	var result Atom
+	//	if err = eval_expr(expr, env, &result); err != nil {
+	//		t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//	} else if got := result.String(); got != expected {
+	//		t.Errorf("quasiquotation: expected %q: got %q\n", expected, got)
+	//	}
+	//}
+	//
+	//// When given the prior environment
+	//// And the input is (define (caar x) (car (car x)))
+	//input = buffer{buffer: []byte("(define (caar x) (car (car x)))")}
+	//if expr, _, err := input.Read(); err != nil {
+	//	t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//} else {
+	//	// Then evaluating the expression should return caar
+	//	expected := "caar"
+	//	var result Atom
+	//	if err = eval_expr(expr, env, &result); err != nil {
+	//		t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//	} else if got := result.String(); got != expected {
+	//		t.Errorf("quasiquotation: expected %q: got %q\n", expected, got)
+	//	}
+	//}
+	//
+	//// When given the prior environment
+	//// And the input is (define (cadr x) (car (cdr x)))
+	//input = buffer{buffer: []byte("(define (cadr x) (car (cdr x)))")}
+	//if expr, _, err := input.Read(); err != nil {
+	//	t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//} else {
+	//	// Then evaluating the expression should return cadr
+	//	expected := "cadr"
+	//	var result Atom
+	//	if err = eval_expr(expr, env, &result); err != nil {
+	//		t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//	} else if got := result.String(); got != expected {
+	//		t.Errorf("quasiquotation: expected %q: got %q\n", expected, got)
+	//	}
+	//}
+	//
+	//// When given the prior environment
+	//// And the input is (defmacro (and a b) (list 'if a b nil))
+	//input = buffer{buffer: []byte("(defmacro (and a b) (list 'if a b nil))")}
+	//if expr, _, err := input.Read(); err != nil {
+	//	t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//} else {
+	//	// Then evaluating the expression should return and
+	//	expected := "and"
+	//	var result Atom
+	//	if err = eval_expr(expr, env, &result); err != nil {
+	//		t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	//	} else if got := result.String(); got != expected {
+	//		t.Errorf("quasiquotation: expected %q: got %q\n", expected, got)
+	//	}
+	//}
+
+	input = buffer{buffer: []byte(`
+		(define (abs x) (if (< x 0) (- 0 x) x))
+		
+		(define (foldl proc init list)
+		  (if list
+			  (foldl proc
+					 (proc init (car list))
+					 (cdr list))
+			  init))
+		
+		(define (foldr proc init list)
+		  (if list
+			  (proc (car list)
+					(foldr proc init (cdr list)))
+			  init))
+		
+		(define (list . items)
+		  (foldr cons nil items))
+		
+		(define (reverse list)
+		  (foldl (lambda (a x) (cons x a)) nil list))
+		
+		(define (unary-map proc list)
+		  (foldr (lambda (x rest) (cons (proc x) rest))
+				 nil
+				 list))
+		
+		(define (map proc . arg-lists)
+		  (if (car arg-lists)
+			  (cons (apply proc (unary-map car arg-lists))
+					(apply map (cons proc
+									 (unary-map cdr arg-lists))))
+			  nil))
+		
+		(define (caar x) (car (car x)))
+		
+		(define (cadr x) (car (cdr x)))
+		
+		(define (append a b) (foldr cons b a))
+		
+		(defmacro (and a b) (list 'if a b nil))`)}
+	for {
+		expr, bb, err := input.Read()
+		if err != nil {
+			if !errors.Is(err, Error_EOF) {
+				t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+			}
+			break
+		}
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+			break
+		}
+		fmt.Println(result.String())
+		input = bb
+	}
+	fmt.Println(sym_table.String())
+
+	// When given the prior environment
+	// And the input is
+	// (defmacro (quasiquote x)
+	//   (if (pair? x)
+	//       (if (eq? (car x) 'unquote)
+	//           (cadr x)
+	//           (if (eq? (caar x) 'unquote-splicing)
+	//               (list 'append
+	//                     (cadr (car x))
+	//                     (list 'quasiquote (cdr x)))
+	//               (list 'cons
+	//                     (list 'quasiquote (car x))
+	//                     (list 'quasiquote (cdr x)))))
+	//       (list 'quote x)))
+	input = buffer{buffer: []byte(`
+	  (defmacro (quasiquote x)
+	    (if (pair? x)
+	        (if (eq? (car x) 'unquote)
+	            (cadr x)
+	            (if (eq? (caar x) 'unquote-splicing)
+	                (list 'append
+	                      (cadr (car x))
+	                      (list 'quasiquote (cdr x)))
+	                (list 'cons
+	                      (list 'quasiquote (car x))
+	                      (list 'quasiquote (cdr x)))))
+	        (list 'quote x)))`)}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return quasiquote
+		expected := "quasiquote"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("quasiquotation: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (defmacro (ignore x) `(quote ,x))
+	input = buffer{buffer: []byte("(defmacro (ignore x) `(quote ,x))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+	} else {
+		fmt.Println(expr.String())
+		// Then evaluating the expression should return ignore
+		expected := "ignore"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("quasiquotation: expected %q: got %q\n", expected, got)
+		}
+	}
+	fmt.Println(sym_table)
+
+	// When given the prior environment
+	// And the input is (ignore foo)
+	input = buffer{buffer: []byte("(ignore foo)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("macros: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return foo
+		expected := "foo"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("quasiquotation: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("quasiquotation: expected %q: got %q\n", expected, got)
 		}
 	}
 }
