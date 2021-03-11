@@ -583,8 +583,8 @@ func TestBooleans(t *testing.T) {
 
 	// When given a new environment
 	env = Init()
-	// And the input is (define fact(lambda(x)(if(= x 0)1(* x(fact(- x 1))))))
-	input = buffer{buffer: []byte("(define fact(lambda(x)(if(= x 0)1(* x(fact(- x 1))))))")}
+	// And the input is (define fact (lambda (x) (if (= x 0) 1 (* x (fact (- x 1))))))
+	input = buffer{buffer: []byte("(define fact (lambda (x) (if (= x 0) 1 (* x (fact (- x 1))))))")}
 	if expr, _, err := input.Read(); err != nil {
 		t.Errorf("booleans: unexpected error: %+v\n", err)
 	} else {
@@ -837,6 +837,142 @@ func TestSyntacticSugar(t *testing.T) {
 			t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
 		} else if got := result.String(); got != expected {
 			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		}
+	}
+}
+
+func TestVariadics(t *testing.T) {
+	// Specification: Variadics
+
+	// When given a new environment
+	env := Init()
+	// And the input is ((lambda (a . b) a) 1 2 3)
+	input := buffer{buffer: []byte("((lambda (a . b) a) 1 2 3)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("variadics: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 1
+		expected := "1"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("variadics: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("variadics: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is ((lambda (a . b) b) 1 2 3)
+	input = buffer{buffer: []byte("((lambda (a . b) b) 1 2 3)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("variadics: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return (2 3)
+		expected := "(2 3)"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("variadics: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("variadics: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is ((lambda args args) 1 2 3)
+	input = buffer{buffer: []byte("((lambda args args) 1 2 3)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("variadics: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return (1 2 3)
+		expected := "(1 2 3)"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("variadics: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("variadics: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (define (sum-list xs) (if xs (+ (car xs) (sum-list (cdr xs))) 0))
+	input = buffer{buffer: []byte("(define (sum-list xs) (if xs (+ (car xs) (sum-list (cdr xs))) 0))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("variadics: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return sum-list
+		expected := "sum-list"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("variadics: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("variadics: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (define (sum-list xs) (if xs (+ (car xs) (sum-list (cdr xs))) 0))
+	input = buffer{buffer: []byte("(sum-list '(1 2 3))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("variadics: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 6
+		expected := "6"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("variadics: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("variadics: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (define (add . xs) (sum-list xs))
+	input = buffer{buffer: []byte("(define (add . xs) (sum-list xs))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("variadics: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return add
+		expected := "add"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("variadics: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("variadics: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (add 1 2 3)
+	input = buffer{buffer: []byte("(add 1 2 3)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("variadics: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 6
+		expected := "6"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("variadics: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("variadics: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (add 1 (- 4 2) (/ 9 3))
+	input = buffer{buffer: []byte("(add 1 (- 4 2) (/ 9 3))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("variadics: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return 6
+		expected := "6"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("variadics: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("variadics: expected %q: got %q\n", expected, got)
 		}
 	}
 }
