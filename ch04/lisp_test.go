@@ -614,3 +614,196 @@ func TestBooleans(t *testing.T) {
 		}
 	}
 }
+
+func TestSyntacticSugar(t *testing.T) {
+	// Specification: SyntacticSugar
+
+	// When given a new environment
+	env := Init()
+	// And the input is 'expr
+	input := buffer{buffer: []byte("'expr'")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then printing the expression should return (quote expr)
+		expected := "(quote expr)"
+		if got := expr.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		} else {
+			// And evaluating the expression should return expr
+			expected = "expr"
+			var result Atom
+			if err = eval_expr(expr, env, &result); err != nil {
+				t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+			} else if got := result.String(); got != expected {
+				t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+			}
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is 'foo
+	input = buffer{buffer: []byte("'foo'")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then printing the expression should return (quote foo)
+		expected := "(quote foo)"
+		if got := expr.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		} else {
+			// And evaluating the expression should return expr
+			expected = "foo"
+			var result Atom
+			if err = eval_expr(expr, env, &result); err != nil {
+				t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+			} else if got := result.String(); got != expected {
+				t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+			}
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is '(+ 1 2)
+	input = buffer{buffer: []byte("'(+ 1 2)'")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then printing the expression should return (quote (+ 1 2))
+		expected := "(quote (+ 1 2))"
+		if got := expr.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		} else {
+			// And evaluating the expression should return (+ 1 2)
+			expected = "(+ 1 2)"
+			var result Atom
+			if err = eval_expr(expr, env, &result); err != nil {
+				t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+			} else if got := result.String(); got != expected {
+				t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+			}
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is '(a . b)
+	input = buffer{buffer: []byte("'(a . b)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then printing the expression should return (quote (a . b))
+		expected := "(quote (a . b))"
+		if got := expr.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		} else {
+			// And evaluating the expression should return (a . b)
+			expected = "(a . b)"
+			var result Atom
+			if err = eval_expr(expr, env, &result); err != nil {
+				t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+			} else if got := result.String(); got != expected {
+				t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+			}
+		}
+	}
+
+	// When given a new environment
+	env = Init()
+	// And the input is (define x '(a b c))
+	input = buffer{buffer: []byte("(define x '(a b c))")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return x
+		expected := "x"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is x
+	input = buffer{buffer: []byte("x")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return (a b c)
+		expected := "(a b c)"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is 'x
+	input = buffer{buffer: []byte("'x")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return x
+		expected := "x"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is (define foo 'bar)
+	input = buffer{buffer: []byte("(define foo 'bar)")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return foo
+		expected := "foo"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is foo
+	input = buffer{buffer: []byte("foo")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return bar
+		expected := "bar"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		}
+	}
+
+	// When given the prior environment
+	// And the input is ''()
+	input = buffer{buffer: []byte("''()")}
+	if expr, _, err := input.Read(); err != nil {
+		t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+	} else {
+		// Then evaluating the expression should return (quote nil)
+		expected := "(quote nil)"
+		var result Atom
+		if err = eval_expr(expr, env, &result); err != nil {
+			t.Errorf("syntacticSugar: unexpected error: %+v\n", err)
+		} else if got := result.String(); got != expected {
+			t.Errorf("syntacticSugar: expected %q: got %q\n", expected, got)
+		}
+	}
+}
